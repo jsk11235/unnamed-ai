@@ -75,11 +75,11 @@ function loss(predictions,answers){
 function gradLastLayer(answers){
   const layer = allNeurons[allNeurons.length-1]
   const mappedLayer = layer.map(elem=>elem.value)
+  const currentLoss = loss(mappedLayer,answers)
   for (let neuron of layer){
-    const currentLoss = loss(mappedLayer,answers) // add answers as a param
     neuron.value+=0.0001
     const newMap = layer.map(elem=>elem.value)
-    const newLoss = loss(newMap,answers) // here as well
+    const newLoss = loss(newMap,answers)
     neuron.value-=0.0001
     neuron.gradient = 10000 * (newLoss-currentLoss)
   }
