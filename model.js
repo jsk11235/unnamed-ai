@@ -14,10 +14,10 @@ for (let dataItem = 0; dataItem < 999; dataItem++) {
 }
 
 const architecture = [3,2,2,1]
+const lr = 0.001
 
-function learn(data, architecture,epochs,bs) {
+function learn(data, architecture,epochs,bs,lr) {
   let allNeurons
-  const lr = 0.001
   let allWeights
   allNeurons = []
   for (let a = 0; a < architecture.length; a++) {
@@ -169,4 +169,4 @@ function learn(data, architecture,epochs,bs) {
 
 }
 
-learn(data,architecture,40,30)
+learn(data,architecture,40,30,0.001)
