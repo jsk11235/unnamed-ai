@@ -16,6 +16,39 @@ for (let dataItem = 0; dataItem < 999; dataItem++) {
 const architecture = [3,2,2,1]
 const lr = 0.001
 
+
+
+function updateValue(location,model,weights) {
+  let maxValue = model[location[0]][location[1]].bias
+  for (let neuron = 0; neuron < model[location[0] - 1].length; neuron++) {
+    const prevValue = model[location[0] - 1][neuron].value
+    const weight = weights[location[0] - 1][neuron][location[1]]
+    maxValue += prevValue * weight.value
+  }
+  model[location[0]][location[1]].value = Math.max(maxValue, 0)
+}
+
+function updateLayer(layer,model,weights) {
+  layer.forEach(neuron => updateValue(neuron.location,model,weights))
+}
+
+function updateLayer1(inputArr,model) {
+  for (let node of model[0]) {
+    node.value = inputArr[node.location[1]]
+  }
+}
+
+function updateNet(input,model,weights) {
+  let timesRun = 0
+  updateLayer1(input,model)
+  model.forEach(layer => {
+    if (timesRun > 0) {
+      updateLayer(layer,model,weights)
+    }
+    timesRun++
+  })
+}
+
 function learn(data, architecture,epochs,bs,lr) {
   let allNeurons
   let allWeights
@@ -25,37 +58,6 @@ function learn(data, architecture,epochs,bs,lr) {
     for (let b = 0; b < architecture[a]; b++) {
       allNeurons[a].push({value: Math.random(), location: [a, b], gradient: 0, bias: 0})
     }
-  }
-
-  function updateValue(location) {
-    let maxValue = allNeurons[location[0]][location[1]].bias
-    for (let neuron = 0; neuron < allNeurons[location[0] - 1].length; neuron++) {
-      const prevValue = allNeurons[location[0] - 1][neuron].value
-      const weight = allWeights[location[0] - 1][neuron][location[1]].value
-      maxValue += prevValue * weight
-    }
-    allNeurons[location[0]][location[1]].value = Math.max(maxValue, 0)
-  }
-
-  function updateLayer(layer) {
-    layer.forEach(neuron => updateValue(neuron.location))
-  }
-
-  function updateLayer1(inputArr) {
-    for (let node of allNeurons[0]) {
-      node.value = inputArr[node.location[1]]
-    }
-  }
-
-  function updateNet(input) {
-    let timesRun = 0
-    updateLayer1(input)
-    allNeurons.forEach(layer => {
-      if (timesRun > 0) {
-        updateLayer(layer)
-      }
-      timesRun++
-    })
   }
 
   allWeights = []
@@ -68,12 +70,6 @@ function learn(data, architecture,epochs,bs,lr) {
       }
     }
   }
-
-
-  updateNet([0.576, 0.898, 0.100])
-
-
-  const answers = [0.123, 0.456, 0.789]
 
   function loss(predictions, answers) {
     let loss = 0
@@ -122,7 +118,7 @@ function learn(data, architecture,epochs,bs,lr) {
 
 
   function trainOnce(inputs, answers) {
-    updateNet(inputs)
+    updateNet(inputs,allNeurons,allWeights)
     backProp(answers)
     for (let a = 0; a < allNeurons.length; a++) {
       for (let b = 0; b < allNeurons[a].length; b++) {
@@ -163,10 +159,16 @@ function learn(data, architecture,epochs,bs,lr) {
   for (let n = 0; n < epochs; n++) {
     trainEpoch(data, bs)
   }
-  updateNet([0.1, 0.2, 0.3])
-  console.log(allWeights[1])
-  console.log(allNeurons)
 
+  return {model:allNeurons,weights:allWeights}
 }
 
-learn(data,architecture,40,30,0.001)
+const network = learn(data,architecture,100,30,0.001)
+
+function predict(trained,inputs){
+  const {model,weights} = trained
+  updateNet(inputs,model,weights)
+  return model[model.length - 1].map(elem => elem.value)
+}
+
+console.log(predict(network,[0.1,0.2,0.3]))
