@@ -6,17 +6,21 @@
 
 let data = []
 
-for (let dataItem = 0; dataItem < 999; dataItem++) {
+for (let dataItem = 0; dataItem < 9099; dataItem++) {
   const a = Math.random()
   const b = Math.random()
   const c = Math.random()
-  data.push({inputs: [a, b, c], answers: [(a + b + c) / 3]})
+  data.push({inputs: [a, b, c], answers: [a*b*c]})
 }
 
-const architecture = [3,2,2,1]
-const lr = 0.001
+function predict(trained,inputs){
+  const {model,weights} = trained
+  updateNet(inputs,model,weights)
+  return model[model.length - 1].map(elem => elem.value)
+}
 
-
+const architecture = [3,20,20,20,20,1]
+const lr = 0.01
 
 function updateValue(location,model,weights) {
   let maxValue = model[location[0]][location[1]].bias
@@ -49,9 +53,11 @@ function updateNet(input,model,weights) {
   })
 }
 
-function learn(data, architecture,epochs,bs,lr) {
+function learn(data, architecture,epochs,bs,lr,validPct,accuracyFunc) {
   let allNeurons
   let allWeights
+  let currentItem = 0
+  let epochLoss = 0
   allNeurons = []
   for (let a = 0; a < architecture.length; a++) {
     allNeurons.push([])
@@ -80,9 +86,11 @@ function learn(data, architecture,epochs,bs,lr) {
   }
 
   function gradLastLayer(answers) {
+    currentItem+=1
     const layer = allNeurons[allNeurons.length - 1]
     const mappedLayer = layer.map(elem => elem.value)
     const currentLoss = loss(mappedLayer, answers)
+    epochLoss = currentItem*epochLoss/(currentItem+1)+currentLoss/(currentItem+1)
     for (let neuron of layer) {
       neuron.value += 0.0001
       const newMap = layer.map(elem => elem.value)
@@ -156,19 +164,29 @@ function learn(data, architecture,epochs,bs,lr) {
     }
   }
 
+  function validateEpoch(dataSet){
+    let lossVal = 0
+    let acc = 0
+    for (let situation of dataSet){
+      const prediction = predict({model:allNeurons,weights:allWeights},situation.inputs)
+      lossVal+=loss(prediction,situation.answers)
+      accuracyFunc(prediction,situation.answers)?acc++:null
+    }
+    return {accuracy:acc/dataSet.length,lossVal:lossVal/dataSet.length}
+  }
+
   for (let n = 0; n < epochs; n++) {
-    trainEpoch(data, bs)
+    const valid = data.slice(0,validPct*data.length)
+    const train = data.slice(validPct*data.length,data.length)
+    trainEpoch(train, bs)
+    const {accuracy,lossVal} = validateEpoch(valid)
+    console.log('epoch',n,'training loss',epochLoss,'validation loss',lossVal,'accuracy',accuracy)
+    epochLoss=0
   }
 
   return {model:allNeurons,weights:allWeights}
 }
 
-const network = learn(data,architecture,100,30,0.001)
-
-function predict(trained,inputs){
-  const {model,weights} = trained
-  updateNet(inputs,model,weights)
-  return model[model.length - 1].map(elem => elem.value)
-}
+const network = learn(data,architecture,40,30,0.0002,0.2,(preds,answers)=>Math.abs(preds-answers)<0.02)
 
 console.log(predict(network,[0.1,0.2,0.3]))
