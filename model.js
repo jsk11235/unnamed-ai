@@ -18,51 +18,36 @@ function getPixelsAsync(url) {
 
 
 async function getFiles() {
-  for (let trainOrValid of ['train', 'valid']) {
-    for (let type of [3, 7]) {
-      const fileList = await readdir(`./digits/mnist_sample/${trainOrValid}/${type}`);
-      for (let file of fileList) {
-        try {
-          const pixels = await getPixelsAsync(`./digits/mnist_sample/${trainOrValid}/${type}/${file}`)
-          const processedPixels = pixels.data.filter((elem, index) => index % 4 === 1)
-          const finalPixels = Array.from(processedPixels).map(elem=>elem/255)
-          const answers = type === 3 ? [1, 0] : [0, 1]
-          if (trainOrValid === 'train') {
-            trainData.push({input: finalPixels, answers: answers})
-          } else {
-            validData.push({input: finalPixels, answers: answers})
-          }
-        } catch (e){console.log(e)}
+  for (let type of [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]) {
+    const fileList = await readdir(`./trainingSet/trainingSet/${type}`);
+    let fileNum = 1
+    const len = fileList.length
+    for (let file of fileList) {
+      try {
+        const pixels = await getPixelsAsync(`./trainingSet/trainingSet/${type}/${file}`)
+        const processedPixels = pixels.data.filter((elem, index) => index % 4 === 1)
+        const finalPixels = Array.from(processedPixels).map(elem => elem / 255)
+        let answers = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+        answers[type] = 1
+        if (fileNum > 0.1 * len) {
+          trainData.push({input: finalPixels, answers: answers})
+        } else {
+          validData.push({input: finalPixels, answers: answers})
+        }
+        fileNum++
+      } catch (e) {
+        console.log(e)
       }
     }
+    console.log(type)
   }
   console.log('data loaded')
-  learn([784,20,2],100,64,0.001,(preds,answers)=>{
+  learn([784, 20, 10], 20, 64, 0.003, (preds, answers) => {
     const maxPred = Math.max(...preds)
     const maxAnswer = Math.max(...answers)
     return preds.indexOf(maxPred) === answers.indexOf(maxAnswer)
-  },trainData,validData,4.5)
+  }, trainData, validData, 5)
 }
-
-// for (let dataItem = 0; dataItem < 9099; dataItem++) {
-//   const a = Math.random()
-//   const b = Math.random()
-//   const c = Math.random()
-//   trainData.push({input: [a, b, c], answers: [a + b + c]})
-// }
-//
-// for (let dataItem = 0; dataItem < 9099; dataItem++) {
-//   const a = Math.random()
-//   const b = Math.random()
-//   const c = Math.random()
-//   validData.push({input: [a, b, c], answers: [a + b + c]})
-// }
-//
-// function test(){
-//   learn([3,400,1],150,32,0.1,(preds,answers)=>
-//     Math.abs(preds-answers)<0.001
-//   ,trainData,validData)
-// }
 
 getFiles()
 
@@ -72,17 +57,18 @@ function predict(trained, inputs) {
   return model[model.length - 1].map(elem => elem.value)
 }
 
-const architecture = [784, 20, 1]
+const architecture = [784, 10,10, 1]
 const lr = 0.01
 
 function updateValue(location, model, weights) {
   let maxValue = model[location[0]][location[1]].bias
+  model[location[0]][location[1]].gradient=0
   for (let neuron = 0; neuron < model[location[0] - 1].length; neuron++) {
     const prevValue = model[location[0] - 1][neuron].value
     const weight = weights[location[0] - 1][neuron][location[1]]
     maxValue += prevValue * weight.value
   }
-  model[location[0]][location[1]].value = Math.max(maxValue, 0)/model[location[0]-1].length
+  model[location[0]][location[1]].value = Math.max(maxValue, 0) / model[location[0] - 1].length
 }
 
 function updateLayer(layer, model, weights) {
@@ -106,7 +92,7 @@ function updateNet(input, model, weights) {
   })
 }
 
-function learn(architecture, epochs, bs, lr, accuracyFunc, tset, vset,decayRate) {
+function learn(architecture, epochs, bs, lr, accuracyFunc, tset, vset, decayRate) {
   let allNeurons
   let allWeights
   let currentItem = 0
@@ -149,7 +135,7 @@ function learn(architecture, epochs, bs, lr, accuracyFunc, tset, vset,decayRate)
       const newMap = layer.map(elem => elem.value)
       const newLoss = loss(newMap, answers)
       neuron.value -= 0.0001
-      neuron.gradient = 10000 * (newLoss - currentLoss) * currentLoss**decayRate
+      neuron.gradient = 10000 * (newLoss - currentLoss) * currentLoss ** decayRate
     }
   }
 
@@ -184,6 +170,9 @@ function learn(architecture, epochs, bs, lr, accuracyFunc, tset, vset,decayRate)
     for (let a = 0; a < allNeurons.length; a++) {
       for (let b = 0; b < allNeurons[a].length; b++) {
         allNeurons[a][b].bias -= allNeurons[a][b].gradient * lr
+        if (allNeurons[a][b].bias<0){
+          allNeurons[a][b].bias=0
+        }
         allNeurons[a][b].gradient = 0
       }
     }
@@ -191,9 +180,9 @@ function learn(architecture, epochs, bs, lr, accuracyFunc, tset, vset,decayRate)
       for (let b = 0; b < allWeights[a].length; b++) {
         for (let c = 0; c < allWeights[a][b].length; c++) {
           allWeights[a][b][c].value -= allWeights[a][b][c].gradient * lr
-          if (allWeights[a][b][c].value>1){
+          if (allWeights[a][b][c].value > 5) {
             allWeights[a][b][c].value = 5
-          } else if (allWeights[a][b][c].value<-5){
+          } else if (allWeights[a][b][c].value < -5) {
             allWeights[a][b][c].value = -5
           }
           allWeights[a][b][c].gradient = 0
@@ -239,6 +228,7 @@ function learn(architecture, epochs, bs, lr, accuracyFunc, tset, vset,decayRate)
     const {accuracy, lossVal} = validateEpoch(vset)
     console.log('| epoch', n, 'training loss', epochLoss, 'validation loss', lossVal, 'accuracy', accuracy)
     epochLoss = 0
+    console.log(allNeurons[1][2])
   }
   console.log('-----------------------------------------------------------------------------------------------------')
 
