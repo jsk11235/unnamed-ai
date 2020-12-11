@@ -54,7 +54,7 @@ async function getFiles() {
     const maxPred = Math.max(...preds)
     const maxAnswer = Math.max(...answers)
     return preds.indexOf(maxPred) === answers.indexOf(maxAnswer)
-  }, trainData, validData, 5)
+  }, trainData, validData,3)
 }
 
 getFiles()
@@ -129,7 +129,7 @@ function learn(architecture, epochs, bs, lr, accuracyFunc, tset, vset, decayRate
   function loss(predictions, answers) {
     let loss = 0
     for (let idx = 0; idx < predictions.length; idx++) {
-      loss += Math.abs(predictions[idx] - answers[idx])
+      loss += (predictions[idx] - answers[idx])**2
     }
     return loss
   }
