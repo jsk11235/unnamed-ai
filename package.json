@@ -10,6 +10,7 @@
   "license": "ISC",
   "description": "",
   "dependencies": {
-    "get-pixels": "^3.3.2"
+    "get-pixels": "^3.3.2",
+    "gpu.js": "^2.10.6"
   }
 }
