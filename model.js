@@ -9,6 +9,22 @@ const util = require('util')
 const readdir = util.promisify(fs.readdir)
 let trainData = []
 let validData = []
+const files = require('fileTesting')
+
+function filesPromise(path) {
+  return new Promise((resolve, reject) => {
+    fs.readFile(path, 'utf8',(err, fileData) => err ? reject(err) : resolve(fileData))
+  })
+}
+
+async function getModel(fileName, dir) {
+  const result = await filesPromise(`${dir}/${fileName}.txt`)
+  return JSON.parse(result)
+}
+
+function save(fileName,dir,content){
+  fs.writeFile(`${dir}/${fileName}.txt`,JSON.stringify(content),(err => {}))
+}
 
 function getPixelsAsync(url) {
   return new Promise((resolve, reject) => {
@@ -17,8 +33,11 @@ function getPixelsAsync(url) {
 }
 
 function sig(num) {
-  return 1 / (1 + Math.exp(-1*num))
+  return 1 / (1 + Math.exp(-1 * num))
 }
+
+const dir = '/mnt/c/Users/Jacob Kirmayer/WebstormProjects/fat-ai-network'
+
 
 function sigSlope(num) {
   const sigNum = sig(num)
@@ -34,7 +53,7 @@ async function getFiles() {
       try {
         const pixels = await getPixelsAsync(`./trainingSet/trainingSet/${type}/${file}`)
         const processedPixels = pixels.data.filter((elem, index) => index % 4 === 1)
-        const finalPixels = Array.from(processedPixels).map(elem => 2* (elem / 255) - 1)
+        const finalPixels = Array.from(processedPixels).map(elem => 2 * (elem / 255) - 1)
         let answers = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
         answers[type] = 1
         if (fileNum > 0.1 * len) {
@@ -50,7 +69,7 @@ async function getFiles() {
     console.log(type)
   }
   console.log('data loaded')
-  learn([784, 20,20, 10], 120, 64, 0.0001, (preds, answers) => {
+  learn([784, 20, 20, 10], 120, 64, 0.0001, (preds, answers) => {
     const maxPred = Math.max(...preds)
     const maxAnswer = Math.max(...answers)
     return preds.indexOf(maxPred) === answers.indexOf(maxAnswer)
@@ -72,7 +91,7 @@ function updateValue(location, model, weights) {
   for (let neuron = 0; neuron < model[location[0] - 1].length; neuron++) {
     const prevValue = model[location[0] - 1][neuron].value
     const weight = weights[location[0] - 1][neuron][location[1]]
-    maxValue += prevValue * (2*sig(weight.value)-1)
+    maxValue += prevValue * (2 * sig(weight.value) - 1)
   }
   model[location[0]][location[1]].value = sig(maxValue)
 }
@@ -98,38 +117,43 @@ function updateNet(input, model, weights) {
   })
 }
 
-function learn(architecture, epochs, bs, lr, accuracyFunc, tset, vset) {
+function learn(architecture, epochs, bs, lr, accuracyFunc, tset, vset,trained) {
   let allNeurons
   let allWeights
   let currentItem = 0
   let epochLoss = 0
-  allNeurons = []
-  for (let a = 0; a < architecture.length; a++) {
-    allNeurons.push([])
-    for (let b = 0; b < architecture[a]; b++) {
-      allNeurons[a].push({value: 2 * Math.random() - 1, location: [a, b], gradient: 0, bias: 2 * Math.random() - 1})
-    }
-  }
-
-  allWeights = []
-  for (let a = 0; a < architecture.length - 1; a++) {
-    allWeights.push([])
-    for (let b = 0; b < architecture[a]; b++) {
-      allWeights[a].push([])
-      for (let c = 0; c < architecture[a + 1]; c++) {
-        allWeights[a][b].push({
-          value: 2 * Math.random() - 1,
-          location: [a, b, c],
-          gradient: 0
-        })
+  if (!trained) {
+    allNeurons = []
+    for (let a = 0; a < architecture.length; a++) {
+      allNeurons.push([])
+      for (let b = 0; b < architecture[a]; b++) {
+        allNeurons[a].push({value: 2 * Math.random() - 1, location: [a, b], gradient: 0, bias: 2 * Math.random() - 1})
       }
     }
+
+    allWeights = []
+    for (let a = 0; a < architecture.length - 1; a++) {
+      allWeights.push([])
+      for (let b = 0; b < architecture[a]; b++) {
+        allWeights[a].push([])
+        for (let c = 0; c < architecture[a + 1]; c++) {
+          allWeights[a][b].push({
+            value: 2 * Math.random() - 1,
+            location: [a, b, c],
+            gradient: 0
+          })
+        }
+      }
+    }
+  } else {
+    allNeurons = trained.model
+    allWeights = trained.weights
   }
 
   function loss(predictions, answers) {
     let loss = 0
     for (let idx = 0; idx < predictions.length; idx++) {
-      loss += ((predictions[idx] - answers[idx])**2)/predictions.length
+      loss += ((predictions[idx] - answers[idx]) ** 2) / predictions.length
     }
     return loss
   }
@@ -156,8 +180,8 @@ function learn(architecture, epochs, bs, lr, accuracyFunc, tset, vset) {
       const nextLayer = allNeurons[loc[0] + 1]
       const weightLayer = allWeights[loc[0]]
       for (let nextNeuron = 0; nextNeuron < nextLayer.length; nextNeuron++) {
-        weightLayer[loc[1]][nextNeuron].gradient =neuron.value*2*sigSlope(weightLayer[loc[1]][nextNeuron].value) * nextLayer[nextNeuron].gradient
-        grad += 2*sigSlope(neuron.value) * (2*sig(weightLayer[loc[1]][nextNeuron].value)-1) * nextLayer[nextNeuron].gradient
+        weightLayer[loc[1]][nextNeuron].gradient = neuron.value * 2 * sigSlope(weightLayer[loc[1]][nextNeuron].value) * nextLayer[nextNeuron].gradient
+        grad += 2 * sigSlope(neuron.value) * (2 * sig(weightLayer[loc[1]][nextNeuron].value) - 1) * nextLayer[nextNeuron].gradient
       }
 
       neuron.gradient = grad
