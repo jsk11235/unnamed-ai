@@ -17,7 +17,7 @@ function getPixelsAsync(url) {
 }
 
 function sig(num) {
-  return 1 / (1 + Math.exp(num))
+  return 1 / (1 + Math.exp(-1*num))
 }
 
 function sigSlope(num) {
@@ -50,11 +50,11 @@ async function getFiles() {
     console.log(type)
   }
   console.log('data loaded')
-  learn([784, 20,20, 10], 120, 64, 0.000001, (preds, answers) => {
+  learn([784, 20,20, 10], 120, 64, 0.0001, (preds, answers) => {
     const maxPred = Math.max(...preds)
     const maxAnswer = Math.max(...answers)
     return preds.indexOf(maxPred) === answers.indexOf(maxAnswer)
-  }, trainData, validData,3)
+  }, trainData, validData)
 }
 
 getFiles()
@@ -98,7 +98,7 @@ function updateNet(input, model, weights) {
   })
 }
 
-function learn(architecture, epochs, bs, lr, accuracyFunc, tset, vset, decayRate) {
+function learn(architecture, epochs, bs, lr, accuracyFunc, tset, vset) {
   let allNeurons
   let allWeights
   let currentItem = 0
@@ -129,7 +129,7 @@ function learn(architecture, epochs, bs, lr, accuracyFunc, tset, vset, decayRate
   function loss(predictions, answers) {
     let loss = 0
     for (let idx = 0; idx < predictions.length; idx++) {
-      loss += (predictions[idx] - answers[idx])**2
+      loss += ((predictions[idx] - answers[idx])**2)/predictions.length
     }
     return loss
   }
@@ -145,7 +145,7 @@ function learn(architecture, epochs, bs, lr, accuracyFunc, tset, vset, decayRate
       const newMap = layer.map(elem => elem.value)
       const newLoss = loss(newMap, answers)
       neuron.value -= 0.0001
-      neuron.gradient = 10000 * (newLoss - currentLoss) * (epochLoss)
+      neuron.gradient = 10000 * (newLoss - currentLoss)
     }
   }
 
@@ -156,7 +156,7 @@ function learn(architecture, epochs, bs, lr, accuracyFunc, tset, vset, decayRate
       const nextLayer = allNeurons[loc[0] + 1]
       const weightLayer = allWeights[loc[0]]
       for (let nextNeuron = 0; nextNeuron < nextLayer.length; nextNeuron++) {
-        weightLayer[loc[1]][nextNeuron].gradient = 2*sigSlope(sig(neuron.value)) * nextLayer[nextNeuron].gradient
+        weightLayer[loc[1]][nextNeuron].gradient =neuron.value*2*sigSlope(weightLayer[loc[1]][nextNeuron].value) * nextLayer[nextNeuron].gradient
         grad += 2*sigSlope(neuron.value) * (2*sig(weightLayer[loc[1]][nextNeuron].value)-1) * nextLayer[nextNeuron].gradient
       }
 
