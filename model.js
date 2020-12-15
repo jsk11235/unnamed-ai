@@ -7,13 +7,14 @@ const getPixels = require('get-pixels')
 const fs = require('fs')
 const util = require('util')
 const readdir = util.promisify(fs.readdir)
+const {GPU} = require('gpu.js');
+const gpu = new GPU({mode: 'cpu'});
 let trainData = []
 let validData = []
-const files = require('fileTesting')
 
 function filesPromise(path) {
   return new Promise((resolve, reject) => {
-    fs.readFile(path, 'utf8',(err, fileData) => err ? reject(err) : resolve(fileData))
+    fs.readFile(path, 'utf8', (err, fileData) => err ? reject(err) : resolve(fileData))
   })
 }
 
@@ -22,8 +23,9 @@ async function getModel(fileName, dir) {
   return JSON.parse(result)
 }
 
-function save(fileName,dir,content){
-  fs.writeFile(`${dir}/${fileName}.txt`,JSON.stringify(content),(err => {}))
+function save(fileName, dir, content) {
+  fs.writeFile(`${dir}/${fileName}.txt`, JSON.stringify(content), (err => {
+  }))
 }
 
 function getPixelsAsync(url) {
@@ -48,13 +50,13 @@ async function getFiles() {
   for (let type of [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]) {
     const fileList = await readdir(`./trainingSet/trainingSet/${type}`);
     let fileNum = 1
-    const len = fileList.length
-    for (let file of fileList) {
+    const len = 100
+    for (let file of fileList.slice(0,100)) {
       try {
         const pixels = await getPixelsAsync(`./trainingSet/trainingSet/${type}/${file}`)
         const processedPixels = pixels.data.filter((elem, index) => index % 4 === 1)
         const finalPixels = Array.from(processedPixels).map(elem => 2 * (elem / 255) - 1)
-        let answers = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+        let answers = new Float32Array([0, 0, 0, 0, 0, 0, 0, 0, 0, 0])
         answers[type] = 1
         if (fileNum > 0.1 * len) {
           trainData.push({input: finalPixels, answers: answers})
@@ -69,7 +71,7 @@ async function getFiles() {
     console.log(type)
   }
   console.log('data loaded')
-  learn([784, 20, 20, 10], 120, 64, 0.0001, (preds, answers) => {
+  learn([784, 20, 20, 10], 10, 64, 0.0001, (preds, answers) => {
     const maxPred = Math.max(...preds)
     const maxAnswer = Math.max(...answers)
     return preds.indexOf(maxPred) === answers.indexOf(maxAnswer)
@@ -117,38 +119,142 @@ function updateNet(input, model, weights) {
   })
 }
 
-function learn(architecture, epochs, bs, lr, accuracyFunc, tset, vset,trained) {
-  let allNeurons
-  let allWeights
-  let currentItem = 0
+function learn(architecture, epochs, bs, lr, accuracyFunc, tset, vset) {
+  let allBiases = []
+  let allWeights = []
+  let allWeightGrads = []
+  let allNeuronGrads = []
   let epochLoss = 0
-  if (!trained) {
-    allNeurons = []
-    for (let a = 0; a < architecture.length; a++) {
-      allNeurons.push([])
-      for (let b = 0; b < architecture[a]; b++) {
-        allNeurons[a].push({value: 2 * Math.random() - 1, location: [a, b], gradient: 0, bias: 2 * Math.random() - 1})
-      }
-    }
 
-    allWeights = []
-    for (let a = 0; a < architecture.length - 1; a++) {
-      allWeights.push([])
-      for (let b = 0; b < architecture[a]; b++) {
-        allWeights[a].push([])
-        for (let c = 0; c < architecture[a + 1]; c++) {
-          allWeights[a][b].push({
-            value: 2 * Math.random() - 1,
-            location: [a, b, c],
-            gradient: 0
-          })
-        }
-      }
-    }
-  } else {
-    allNeurons = trained.model
-    allWeights = trained.weights
+  function smallChange(arr, index) {
+    const newArr = arr
+    newArr[index] += 0.0001
+    return newArr
   }
+
+  const lastLayer = gpu.createKernelMap({
+    grads: function lastLayerGrads(preds, answers, predsLen) {
+      let currentLoss = 0
+      let newLoss = 0
+      for (let idx = 0; idx < predsLen; idx++) {
+        currentLoss += ((preds[idx] - answers[idx]) ** 2) / predsLen
+      }
+      for (let idx2 = 0; idx2 < predsLen; idx2++) {
+        idx2 === this.thread.x ? newLoss += ((preds[idx2] - answers[idx2] + 0.0001) ** 2) / predsLen : newLoss += ((preds[idx2] - answers[idx2]) ** 2) / predsLen
+      }
+      return 10000 * (newLoss - currentLoss)
+    }
+  }, function (preds, biasLayer, answers, predsLen, lr) {
+    return biasLayer[this.thread.x] - lastLayerGrads(preds, answers, predsLen) * lr
+  }).setOutput([architecture[architecture.length - 1]]).setPipeline(true).setFunctions([smallChange]).setImmutable(true)
+
+  const biasInitArr = architecture.map((elem) => gpu.createKernel(function () {
+    return 2 * Math.random() - 1
+  }).setOutput([elem]).setPipeline(true))
+
+  architecture.forEach((elem, idx) => {
+    allBiases.push(biasInitArr[idx]())
+  })
+
+  const neuronGradInit = architecture.map((elem) => gpu.createKernel(function () {
+    return 0
+  }).setOutput([elem]).setPipeline(true))
+
+  architecture.forEach((elem, idx) => {
+    allNeuronGrads.push(neuronGradInit[idx]())
+  })
+
+  const weightInitArr = architecture.map((elem, index) => {
+    if (index < architecture.length - 1) {
+      return gpu.createKernel(function (idx) {
+          return 2 * Math.random() - 1
+        }
+      ).setOutput([architecture[index + 1], elem]).setPipeline(true)
+    }
+  })
+
+
+  architecture.forEach((elem, idx) => {
+    idx < architecture.length - 1 ? allWeights.push(weightInitArr[idx](idx)) : null
+  })
+
+  const weightGradInit = architecture.map((elem, index) => {
+    if (index < architecture.length - 1) {
+      return gpu.createKernel(function (idx) {
+          return 0
+        }
+      ).setOutput([architecture[index + 1], elem]).setPipeline(true)
+    }
+  })
+
+  architecture.forEach((elem, idx) => {
+    idx < architecture.length - 1 ? allWeightGrads.push(weightGradInit[idx](idx)) : null
+  })
+
+
+
+  const neuronsArr = architecture.map((elem, index) => gpu.createKernelMap({
+    grads: function grad(thisBiasLayer, weightLayer, nextGradLayer, nextRowLength) {
+      const xVal = this.thread.x
+
+      function calculateNeuronGrad(thisBias, weightLayer, nextRowLength, nextGradLayer, xVal) {
+        let res = 0
+        for (let nextNeuron = 0; nextNeuron < nextRowLength; nextNeuron++) {
+          res += 2 * sigSlope(thisBias) * (2 * sig(weightLayer[xVal][nextNeuron]) - 1) * nextGradLayer[nextNeuron]
+        }
+        return res
+      }
+
+      return calculateNeuronGrad(thisBiasLayer[this.thread.x], weightLayer, nextRowLength, nextGradLayer, xVal)
+    }
+  }, function (thisBiasLayer, weightLayer, nextGradLayer, lr, nextRowLength) {
+    // this will return an array of the new biases
+    const gradient = grad(thisBiasLayer, weightLayer, nextGradLayer, nextRowLength)
+    return thisBiasLayer[this.thread.x] - gradient * lr
+  }).setOutput([elem]).setPipeline(true).setFunctions([sig, sigSlope]).setImmutable(true))
+
+  const weightsArr = architecture.map((elem, index) => gpu.createKernelMap({
+      grads: function weightGrads(thisLayer, weightLayer, nextLayer) {
+        const a = thisLayer[this.thread.y]
+        const b = sigSlope(weightLayer[this.thread.y][this.thread.x])
+        const c = nextLayer[this.thread.x]
+        return 2 * a * b * c
+      }
+    },
+    function (thisLayer, weightLayer, nextLayer, lr) {
+      const gradient = weightGrads(thisLayer, weightLayer, nextLayer)
+      return weightLayer[this.thread.y][this.thread.x] - gradient * lr
+    }
+  ).setOutput([architecture[index + 1], elem]).setPipeline(true).setFunctions([sigSlope, sig]).setImmutable(true))
+
+  architecture.forEach((elem, idx) => {
+    idx < architecture.length - 1 ? allWeights.push(weightInitArr[idx](idx)) : null
+  })
+
+  const validKernel = gpu.createKernelMap({
+      loss: function calcLoss(preds, answers, answersLength) {
+        let loss = 0
+        for (let idx = 0; idx < answersLength; idx++) {
+          loss += (preds[idx] - answers[this.thread.x][idx]) ** 2
+        }
+        return loss
+      }
+    },
+    function (inputs, answers, answersLength) {
+      const preds = forward(inputs[this.thread.x])
+      const loss = calcLoss(preds, answers, answersLength)
+      return accuracyFunc(preds, answers)
+    }).setOutput([vset.length]).setImmutable(true).setFunctions([forward])
+
+  const forwardArr = architecture.map((elem, index) => gpu.createKernel(
+    function (prevLayerValues, weightLayer, prevLayerLength) {
+      let sum = 0
+      for (let prevNeuron = 0; prevNeuron < prevLayerLength; prevNeuron++) {
+        sum += weightLayer[this.thread.y][prevNeuron][this.thread.x]
+      }
+      return sig(sum)
+    }
+  ).setOutput([elem,bs]).setImmutable(true).setPipeline(true).setFunctions([sig]))
 
   function loss(predictions, answers) {
     let loss = 0
@@ -158,62 +264,38 @@ function learn(architecture, epochs, bs, lr, accuracyFunc, tset, vset,trained) {
     return loss
   }
 
-  function gradLastLayer(answers) {
-    currentItem += 1
-    const layer = allNeurons[allNeurons.length - 1]
-    const mappedLayer = layer.map(elem => elem.value)
-    const currentLoss = loss(mappedLayer, answers)
-    epochLoss = currentItem * epochLoss / (currentItem + 1) + currentLoss / (currentItem + 1)
-    for (let neuron of layer) {
-      neuron.value += 0.0001
-      const newMap = layer.map(elem => elem.value)
-      const newLoss = loss(newMap, answers)
-      neuron.value -= 0.0001
-      neuron.gradient = 10000 * (newLoss - currentLoss)
+
+  function backProp(preds, answers) {
+    const last = lastLayer(preds, allBiases[allBiases.length - 1], answers, answers.length, lr)
+    allBiases[allBiases.length - 1] = last.result
+    allNeuronGrads[architecture.length - 1] = last.grads
+    for (let layer = allBiases.length - 2; layer > -1; layer--) {
+      const weightInfo = weightsArr[layer](allBiases[layer], allWeights[layer], allBiases[layer + 1], lr)
+      allWeights[layer] = weightInfo.result
+      allWeightGrads[layer] = weightInfo.grads
+      //thisLayer, weightLayer, nextLayer, lr, nextRowLength
+      const neuronInfo = neuronsArr[layer](allBiases[layer], allWeights[layer], allNeuronGrads[layer + 1], lr, architecture[layer + 1])
+      allBiases[layer] = neuronInfo.grads
+      allNeuronGrads[layer] = neuronInfo.result
+      allNeuronGrads[layer+1].delete()
     }
   }
 
-  function backOnce(layer) {
-    for (let neuron of layer) {
-      let grad = 0
-      const loc = neuron.location
-      const nextLayer = allNeurons[loc[0] + 1]
-      const weightLayer = allWeights[loc[0]]
-      for (let nextNeuron = 0; nextNeuron < nextLayer.length; nextNeuron++) {
-        weightLayer[loc[1]][nextNeuron].gradient = neuron.value * 2 * sigSlope(weightLayer[loc[1]][nextNeuron].value) * nextLayer[nextNeuron].gradient
-        grad += 2 * sigSlope(neuron.value) * (2 * sig(weightLayer[loc[1]][nextNeuron].value) - 1) * nextLayer[nextNeuron].gradient
-      }
-
-      neuron.gradient = grad
+  function feed(inputs, layer) {
+    if (layer === 0) {
+      return inputs
+    } else {
+      return forwardArr[layer](feed(inputs, layer - 1), allWeights[layer - 1], architecture[layer - 1])
     }
   }
 
-
-  function backProp(answers) {
-    gradLastLayer(answers)
-    for (let layer = allNeurons.length - 2; layer > -1; layer--) {
-      backOnce(allNeurons[layer])
-    }
+  function forward(inputs) {
+    return feed(inputs, architecture.length - 1)
   }
-
 
   function trainOnce(inputs, answers) {
-    updateNet(inputs, allNeurons, allWeights)
-    backProp(answers)
-    for (let a = 0; a < allNeurons.length; a++) {
-      for (let b = 0; b < allNeurons[a].length; b++) {
-        allNeurons[a][b].bias -= allNeurons[a][b].gradient * lr
-        allNeurons[a][b].gradient = 0
-      }
-    }
-    for (let a = 0; a < allWeights.length; a++) {
-      for (let b = 0; b < allWeights[a].length; b++) {
-        for (let c = 0; c < allWeights[a][b].length; c++) {
-          allWeights[a][b][c].value -= allWeights[a][b][c].gradient * lr
-          allWeights[a][b][c].gradient = 0
-        }
-      }
-    }
+    const preds = forward(inputs)
+    backProp(preds, answers)
   }
 
   function miniBatches(batch, size) {
@@ -225,9 +307,9 @@ function learn(architecture, epochs, bs, lr, accuracyFunc, tset, vset,trained) {
   }
 
   function trainMiniBatch(miniBatch) {
-    for (let situation of miniBatch) {
-      trainOnce(situation.input, situation.answers)
-    }
+    const inputs = miniBatch.map(elem=>elem.input)
+    const answers = miniBatch.map(elem=>elem.answers)
+    trainOnce(inputs,answers)
   }
 
   function trainEpoch(batch, size) {
@@ -237,24 +319,24 @@ function learn(architecture, epochs, bs, lr, accuracyFunc, tset, vset,trained) {
   }
 
   function validateEpoch(dataSet) {
-    let lossVal = 0
-    let acc = 0
-    for (let situation of dataSet) {
-      const prediction = predict({model: allNeurons, weights: allWeights}, situation.input)
-      lossVal += loss(prediction, situation.answers)
-      accuracyFunc(prediction, situation.answers) ? acc++ : null
-    }
-    return {accuracy: acc / dataSet.length, lossVal: lossVal / dataSet.length}
+    // const inputs = dataSet.map(elem=>elem.input)
+    // const answers = dataSet.map(elem=>elem.answers)
+    // const valid = validKernel(inputs,answers,answers.length)
+    // const acc= valid.result.reduce((a,b)=>a+b)
+    // const lossVal = valid.loss.reduce((a,b)=>a+b)
+    return {accuracy: 1, lossVal: 1}
   }
 
   console.log('----------------------------------------------------------------------------------------------------')
   for (let n = 0; n < epochs; n++) {
+    console.time()
     trainEpoch(tset, bs)
+    console.timeEnd()
     const {accuracy, lossVal} = validateEpoch(vset)
     console.log('| epoch', n, 'training loss', epochLoss, 'validation loss', lossVal, 'accuracy', accuracy)
     epochLoss = 0
   }
   console.log('-----------------------------------------------------------------------------------------------------')
 
-  return {model: allNeurons, weights: allWeights}
+  return {model: allBiases, weights: allWeights}
 }
