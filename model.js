@@ -187,10 +187,10 @@ function learn(architecture, epochs, bs, lr, accuracyFunc, tset, vset) {
     }
   })
 
+
   architecture.forEach((elem, idx) => {
     idx < architecture.length - 1 ? allWeightGrads.push(weightGradInit[idx](idx)) : null
   })
-
 
 
   const neuronsArr = architecture.map((elem, index) => gpu.createKernelMap({
@@ -250,11 +250,11 @@ function learn(architecture, epochs, bs, lr, accuracyFunc, tset, vset) {
     function (prevLayerValues, weightLayer, prevLayerLength) {
       let sum = 0
       for (let prevNeuron = 0; prevNeuron < prevLayerLength; prevNeuron++) {
-        sum += weightLayer[this.thread.y][prevNeuron][this.thread.x]
+        sum += prevLayerValues[prevNeuron] * weightLayer[prevNeuron][this.thread.x]
       }
       return sig(sum)
     }
-  ).setOutput([elem,bs]).setImmutable(true).setPipeline(true).setFunctions([sig]))
+  ).setOutput([elem]).setImmutable(true).setPipeline(true).setFunctions([sig]))
 
   function loss(predictions, answers) {
     let loss = 0
@@ -277,7 +277,6 @@ function learn(architecture, epochs, bs, lr, accuracyFunc, tset, vset) {
       const neuronInfo = neuronsArr[layer](allBiases[layer], allWeights[layer], allNeuronGrads[layer + 1], lr, architecture[layer + 1])
       allBiases[layer] = neuronInfo.grads
       allNeuronGrads[layer] = neuronInfo.result
-      allNeuronGrads[layer+1].delete()
     }
   }
 
@@ -285,7 +284,8 @@ function learn(architecture, epochs, bs, lr, accuracyFunc, tset, vset) {
     if (layer === 0) {
       return inputs
     } else {
-      return forwardArr[layer](feed(inputs, layer - 1), allWeights[layer - 1], architecture[layer - 1])
+      const returned = forwardArr[layer](feed(inputs, layer - 1), allWeights[layer - 1], architecture[layer - 1])
+      return returned
     }
   }
 
@@ -307,9 +307,9 @@ function learn(architecture, epochs, bs, lr, accuracyFunc, tset, vset) {
   }
 
   function trainMiniBatch(miniBatch) {
-    const inputs = miniBatch.map(elem=>elem.input)
-    const answers = miniBatch.map(elem=>elem.answers)
-    trainOnce(inputs,answers)
+    for (let situation of miniBatch) {
+      trainOnce(situation.input, situation.answers)
+    }
   }
 
   function trainEpoch(batch, size) {
