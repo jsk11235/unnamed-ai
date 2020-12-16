@@ -80,45 +80,6 @@ async function getFiles() {
 
 getFiles()
 
-function predict(trained, inputs) {
-  const {model, weights} = trained
-  updateNet(inputs, model, weights)
-  return model[model.length - 1].map(elem => elem.value)
-}
-
-
-function updateValue(location, model, weights) {
-  let maxValue = model[location[0]][location[1]].bias
-  model[location[0]][location[1]].gradient = 0
-  for (let neuron = 0; neuron < model[location[0] - 1].length; neuron++) {
-    const prevValue = model[location[0] - 1][neuron].value
-    const weight = weights[location[0] - 1][neuron][location[1]]
-    maxValue += prevValue * (2 * sig(weight.value) - 1)
-  }
-  model[location[0]][location[1]].value = sig(maxValue)
-}
-
-function updateLayer(layer, model, weights) {
-  layer.forEach(neuron => updateValue(neuron.location, model, weights))
-}
-
-function updateLayer1(inputArr, model) {
-  for (let node of model[0]) {
-    node.value = inputArr[node.location[1]]
-  }
-}
-
-function updateNet(input, model, weights) {
-  let timesRun = 0
-  updateLayer1(input, model)
-  model.forEach(layer => {
-    if (timesRun > 0) {
-      updateLayer(layer, model, weights)
-    }
-    timesRun++
-  })
-}
-
 function learn(architecture, epochs, bs, lr, accuracyFunc, tset, vset) {
   let allBiases = []
   let allWeights = []
