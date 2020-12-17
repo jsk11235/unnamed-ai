@@ -46,7 +46,7 @@ async function getFiles() {
     const fileList = await readdir(`./trainingSet/trainingSet/${type}`);
     let fileNum = 1
     const len = 100
-    for (let file of fileList.slice(0, 100)) {
+    for (let file of fileList.slice(0,100)) {
       try {
         const pixels = await getPixelsAsync(`./trainingSet/trainingSet/${type}/${file}`)
         const processedPixels = pixels.data.filter((elem, index) => index % 4 === 1)
@@ -66,7 +66,7 @@ async function getFiles() {
     console.log(type)
   }
   console.log('data loaded')
-  learn([784, 20, 20, 10], 10, 32, 0.0001, (preds, answers) => {
+  learn([784, 20, 20, 10], 10, 128, 0.0001, (preds, answers) => {
     const maxPred = Math.max(...preds)
     const maxAnswer = Math.max(...answers)
     return preds.indexOf(maxPred) === answers.indexOf(maxAnswer)
@@ -247,6 +247,8 @@ function learn(architecture, epochs, bs, lr, accuracyFunc, tset, vset) {
 
       function backProp(preds, answers) {
         const last = lastLayer(preds, allBiases[archLength - 1], answers, ansLen, lr)
+        allBiases[archLength-1].delete()
+        allNeuronGrads[archLength-1].delete()
         allBiases[archLength - 1] = last.result
         allNeuronGrads[archLength - 1] = last.grads
         for (let layer = archLength - 2; layer > -1; layer--) {
@@ -268,6 +270,8 @@ function learn(architecture, epochs, bs, lr, accuracyFunc, tset, vset) {
             allWeightGrads[layer+1].delete()
           }
         }
+        allNeuronGrads[0].delete()
+        allWeightGrads[0].delete()
       }
 
       for (let item of minibatch) {
@@ -279,15 +283,19 @@ function learn(architecture, epochs, bs, lr, accuracyFunc, tset, vset) {
   )
 
   function miniBatches(batch, size) {
+    console.time()
     let res = []
     for (let n = 0; n < Math.ceil(batch.length / size); n++) {
       res.push(batch.slice(n * size, (n + 1) * size))
     }
+    console.timeEnd()
     return res
   }
 
   function trainMiniBatch(miniBatch) {
     const trained = miniBatchKernel(allBiases, allWeights, allNeuronGrads, allWeightGrads, miniBatch,architecture.length,miniBatch[0].answers.length)
+    allWeights.forEach(elem=>{elem.delete()})
+    allBiases.forEach(elem=>{elem.delete()})
     allWeights = trained.allWeights
     allBiases = trained.allBiases
   }
@@ -309,9 +317,7 @@ function learn(architecture, epochs, bs, lr, accuracyFunc, tset, vset) {
 
   console.log('----------------------------------------------------------------------------------------------------')
   for (let n = 0; n < epochs; n++) {
-    console.time()
     trainEpoch(tset, bs)
-    console.timeEnd()
     const {accuracy, lossVal} = validateEpoch(vset)
     console.log('| epoch', n, 'training loss', epochLoss, 'validation loss', lossVal, 'accuracy', accuracy)
     epochLoss = 0
