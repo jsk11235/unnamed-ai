@@ -259,7 +259,6 @@ function learn(architecture, epochs, bs, lr, accuracyFunc, tset, vset) {
           allWeightGrads[layer] = weightInfo.grads
           //thisLayer, weightLayer, nextLayer, lr, nextRowLength
           const neuronInfo = neuronsArr[layer](allBiases[layer], allWeights[layer], allNeuronGrads[layer + 1], lr, architecture[layer + 1])
-          allWeights[layer].delete()
           allBiases[layer] = neuronInfo.grads
           allNeuronGrads[layer].delete()
           allNeuronGrads[layer] = neuronInfo.result
