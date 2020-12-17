@@ -283,12 +283,10 @@ function learn(architecture, epochs, bs, lr, accuracyFunc, tset, vset) {
   )
 
   function miniBatches(batch, size) {
-    console.time()
     let res = []
     for (let n = 0; n < Math.ceil(batch.length / size); n++) {
       res.push(batch.slice(n * size, (n + 1) * size))
     }
-    console.timeEnd()
     return res
   }
 
@@ -317,10 +315,12 @@ function learn(architecture, epochs, bs, lr, accuracyFunc, tset, vset) {
 
   console.log('----------------------------------------------------------------------------------------------------')
   for (let n = 0; n < epochs; n++) {
+    console.time()
     trainEpoch(tset, bs)
     const {accuracy, lossVal} = validateEpoch(vset)
     console.log('| epoch', n, 'training loss', epochLoss, 'validation loss', lossVal, 'accuracy', accuracy)
     epochLoss = 0
+    console.timeEnd()
   }
   console.log('-----------------------------------------------------------------------------------------------------')
 
