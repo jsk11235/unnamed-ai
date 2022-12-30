@@ -1,8 +1,10 @@
 # Welcome to unnamed-ai
 
-A CPU-based image classifier CNN in javascript
+A CPU-based image classifier CNN in javascript 
 
 To demo on handwritten MNIST digits (the model is configured by default for this test):
+
+Install node
 
 Download the MNIST dataset https://www.kaggle.com/datasets/scolianni/mnistasjpg
 
