@@ -8,6 +8,10 @@ Download the MNIST dataset https://www.kaggle.com/datasets/scolianni/mnistasjpg
 
 Go to index.js
 
+Run ```npm i``` to install dependencies 
+
 Adjust directory variable to the location of the ten digit folders.
 
 Adjust epoch count and learning rate as desired.
+
+Run with ```node index.js``` .
