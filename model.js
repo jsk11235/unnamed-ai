@@ -11,13 +11,13 @@ function filesPromise(path) {
   })
 }
 
-async function getModel(fileName, dir) {
-  const result = await filesPromise(`${dir}/${fileName}.txt`)
+async function getModel(filePath) {
+  const result = await filesPromise(filePath)
   return JSON.parse(result)
 }
 
-function save(fileName, dir, content) {
-  fs.writeFile(`${dir}/${fileName}.txt`, JSON.stringify(content), (err => {
+function save(filePath, content) {
+  fs.writeFile(filePath, JSON.stringify(content), (err => {
   }))
 }
 
@@ -31,16 +31,13 @@ function sig(num) {
   return 1 / (1 + Math.exp(-1 * num))
 }
 
-const dir = './archive/trainingSet/trainingSet'
-
-
 function sigSlope(num) {
   const sigNum = sig(num)
   return sigNum * (1 - sigNum)
 }
 
-async function getFiles() {
-  for (let type of [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]) {
+async function loadDataAndTrain(dir,folderList,epochs,lr,fromModel,toModel) {
+  for (let type of folderList) {
     const fileList = await readdir(`${dir}/${type}`);
     let fileNum = 1
     const len = fileList.length
@@ -64,16 +61,17 @@ async function getFiles() {
     console.log(type)
   }
   console.log('data loaded')
-  const m = await getModel('model1',dir)
-  const model = learn([784, 20, 20, 10], 150, 64, 0.002, (preds, answers) => {
+  // const m = null
+  const m = await getModel(fromModel)
+  const model = learn([784, 20, 20, 10], epochs, 64, lr, (preds, answers) => {
     const maxPred = Math.max(...preds)
     const maxAnswer = Math.max(...answers)
     return preds.indexOf(maxPred) === answers.indexOf(maxAnswer)
   }, trainData, validData,m)
-  await save('model1', dir, model)
+  await save(toModel, model)
 }
 
-getFiles()
+
 
 function predict(trained, inputs) {
   const {model, weights} = trained
@@ -163,11 +161,11 @@ function learn(architecture, epochs, bs, lr, accuracyFunc, tset, vset, trained) 
   }
 
   function gradLastLayer(answers) {
-    currentItem += 1
     const layer = allNeurons[allNeurons.length - 1]
     const mappedLayer = layer.map(elem => elem.value)
     const currentLoss = loss(mappedLayer, answers)
-    epochLoss = currentItem * epochLoss / (currentItem + 1) + currentLoss / (currentItem + 1)
+    epochLoss = (currentItem * epochLoss + currentLoss) / (currentItem + 1)
+    currentItem += 1
     for (let neuron of layer) {
       neuron.value += 0.0001
       const newMap = layer.map(elem => elem.value)
@@ -258,6 +256,7 @@ function learn(architecture, epochs, bs, lr, accuracyFunc, tset, vset, trained) 
   for (let n = 0; n < epochs; n++) {
     console.time('epoch time')
     trainEpoch(tset, bs)
+    currentItem = 0
     const {accuracy, lossVal} = validateEpoch(vset)
     console.log('| epoch', n, 'training loss', epochLoss, 'validation loss', lossVal, 'accuracy', accuracy)
     console.timeEnd('epoch time')
@@ -267,3 +266,23 @@ function learn(architecture, epochs, bs, lr, accuracyFunc, tset, vset, trained) 
 
   return {model: allNeurons, weights: allWeights}
 }
+
+async function predictFile(filePath,modelPath){
+  const model = await getModel(modelPath)
+  const pixels = await getPixelsAsync(filePath)
+  const processedPixels = pixels.data.filter((elem, index) => index % 4 === 1)
+  const finalPixels = Array.from(processedPixels).map(elem => 2 * (elem / 255) - 1)
+  predict(model,finalPixels).map((elem,idx)=>{
+    console.log(`${Math.floor(elem*10000)/100}% confidence that this is a ${idx}`)
+  })
+}
+
+const dir = './archive/trainingSet/trainingSet'
+const folderList = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
+const epochs = 2
+const lr = 0.002
+const fromModel = `./${dir}/model1.txt`
+
+
+loadDataAndTrain(dir,folderList,epochs,lr,fromModel,fromModel)
+// predictFile(`${dir}/7/img_6.jpg`,fromModel)
