@@ -1,6 +1,6 @@
 # Welcome to unnamed-ai
 
-A CPU-based image classifier CNN in javascript 
+A CPU-based image classifier Neural Network in javascript 
 
 To demo on handwritten MNIST digits (the model is configured by default for this test):
 
